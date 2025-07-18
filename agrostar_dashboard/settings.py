@@ -96,10 +96,10 @@ WSGI_APPLICATION = 'agrostar_dashboard.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'agrostar_db',
-        'USER': 'postgres',
-        'PASSWORD': 'Markytics1234',
-        'HOST': '34.93.164.175',
+        'NAME': '',
+        'USER': '',
+        'PASSWORD': '',
+        'HOST': '',
         'PORT': '5432',
     }
 }
