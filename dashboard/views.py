@@ -253,28 +253,81 @@
 
 
 
-from django.views import View
+# from django.views import View
+# from django.http import JsonResponse
+# from django.db.models import Max, Subquery, OuterRef
+# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
+
+# class QueueHistoryView(View):
+#     def get(self, request, *args, **kwargs):
+#         latest_history = DebtCollectionCallHistory.objects.filter(
+#             customer_id=OuterRef('customer_id')
+#         ).order_by('-id')
+
+#         data = (
+#             DebtCollectionCallQueue.objects
+#             .values('customer_id', 'customer_name')
+#             .annotate(
+#                 max_ocp=Max('ocp'),
+#                 total_outstanding=Max('total_outstanding'),
+#                 total_interest=Max('interest_amount'),
+#                 cd_valid_amount=Max('cd_amount'),
+#                 cd_valid_date=Max('cd_valid_till'),
+#                 last_payment_date=Max('last_payment_date'),
+#                 total_cd_amount=Max('total_cd_amount'),
+#                 mode_of_payment=Subquery(latest_history.values('mode_of_payment')[:1]),
+#                 promise_date=Subquery(latest_history.values('promise_date')[:1]),
+#                 promise_amount=Subquery(latest_history.values('promise_amount')[:1])
+#             )
+#             .order_by('customer_id')
+#         )
+
+#         results = []
+#         for item in data:
+#             results.append({
+#                 "customer_name": item["customer_name"],
+#                 "customer_id": item["customer_id"],
+#                 "max_ocp": item["max_ocp"],
+#                 "total_outstanding": item["total_outstanding"],
+#                 "total_interest": item["total_interest"],
+#                 "cd valid amount": item["cd_valid_amount"],
+#                 "cd valid date": item["cd_valid_date"],
+#                 "last payment date": item["last_payment_date"],
+#                 "total_cd_amount(upcoming overdue amount)": item["total_cd_amount"],
+#                 "mode_of_payment": item["mode_of_payment"],
+#                 "promise_date": item["promise_date"],
+#                 "promise_amount": item["promise_amount"],
+#             })
+
+#         return JsonResponse(results, safe=False)
+
+
+
 from django.http import JsonResponse
-from django.db.models import Max, Subquery, OuterRef
+from django.db.models import Max, Sum, Subquery, OuterRef, F
+from django.views import View
 from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
 
+
 class QueueHistoryView(View):
-    def get(self, request, *args, **kwargs):
+    def get(self, request):
+        # Subquery: Latest history data for each customer_id
         latest_history = DebtCollectionCallHistory.objects.filter(
             customer_id=OuterRef('customer_id')
-        ).order_by('-id')
+        ).order_by('-id')  # Assumes 'id' indicates most recent
 
-        data = (
+        # Step 1: Grouping customer-level data
+        customer_data = (
             DebtCollectionCallQueue.objects
             .values('customer_id', 'customer_name')
             .annotate(
                 max_ocp=Max('ocp'),
-                total_outstanding=Max('total_outstanding'),
-                total_interest=Max('interest_amount'),
-                cd_valid_amount=Max('cd_amount'),
+                total_outstanding=Sum('total_outstanding'),
+                total_interest=Sum('interest_amount'),
+                cd_valid_amount=Sum('cd_amount'),
                 cd_valid_date=Max('cd_valid_till'),
                 last_payment_date=Max('last_payment_date'),
-                total_cd_amount=Max('total_cd_amount'),
+                total_cd_amount=Sum('total_cd_amount'),
                 mode_of_payment=Subquery(latest_history.values('mode_of_payment')[:1]),
                 promise_date=Subquery(latest_history.values('promise_date')[:1]),
                 promise_amount=Subquery(latest_history.values('promise_amount')[:1])
@@ -282,21 +335,33 @@ class QueueHistoryView(View):
             .order_by('customer_id')
         )
 
+        # Step 2: Constructing the final response list
         results = []
-        for item in data:
+        for item in customer_data:
+            # Fetch invoice-level details for this customer
+            invoices = DebtCollectionCallQueue.objects.filter(
+                customer_id=item['customer_id']
+            ).values(
+                'invoice_no',
+                'product',
+                'invoice_overdue',
+                'ocp'
+            )
+
             results.append({
-                "customer_name": item["customer_name"],
                 "customer_id": item["customer_id"],
+                "customer_name": item["customer_name"],
                 "max_ocp": item["max_ocp"],
                 "total_outstanding": item["total_outstanding"],
                 "total_interest": item["total_interest"],
-                "cd valid amount": item["cd_valid_amount"],
-                "cd valid date": item["cd_valid_date"],
-                "last payment date": item["last_payment_date"],
-                "total_cd_amount(upcoming overdue amount)": item["total_cd_amount"],
+                "cd_valid_amount": item["cd_valid_amount"],
+                "cd_valid_date": item["cd_valid_date"],
+                "last_payment_date": item["last_payment_date"],
+                "total_cd_amount": item["total_cd_amount"],
                 "mode_of_payment": item["mode_of_payment"],
                 "promise_date": item["promise_date"],
                 "promise_amount": item["promise_amount"],
+                "invoices": list(invoices)
             })
 
         return JsonResponse(results, safe=False)
