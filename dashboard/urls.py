@@ -55,11 +55,12 @@
 # ]
 
 from django.urls import path
-from .views import QueueHistoryView  
+from .views import QueueHistoryAPIView 
 
 urlpatterns = [
-    path('api/queue-history/', QueueHistoryView.as_view(), name='queue-history'),
+    path('api/queue-history/', QueueHistoryAPIView.as_view(), name='queue-history'),
 ]
+
 
 
 

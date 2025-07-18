@@ -82,27 +82,27 @@ WSGI_APPLICATION = 'agrostar_dashboard.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'SmartCollect2',
-#         'USER': 'postgres',
-#         'PASSWORD': 'Markytics1234',
-#         'HOST': '34.93.164.175',
-#         'PORT': '5432',
-#     }
-# }
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': '',
-        'USER': '',
-        'PASSWORD': '',
-        'HOST': '',
+        'NAME': 'agrostar_db',
+        'USER': 'postgres',
+        'PASSWORD': 'Markytics1234',
+        'HOST': '34.93.164.175',
         'PORT': '5432',
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': '',
+#         'USER': '',
+#         'PASSWORD': '',
+#         'HOST': '',
+#         'PORT': '5432',
+#     }
+# }
 
 
 # Password validation
