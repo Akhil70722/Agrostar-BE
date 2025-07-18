@@ -87,9 +87,9 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'SmartCollect2',
         'USER': 'postgres',
-        'PASSWORD': 'Markytics1234',
-        'HOST': '34.93.164.175',
-        'PORT': '5432',
+        'PASSWORD': '',
+        'HOST': '',
+        'PORT': '',
     }
 }
 
