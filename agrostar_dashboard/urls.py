@@ -21,6 +21,7 @@ from django.urls import path, include
 
 urlpatterns = [
     # path('admin/', admin.site.urls),
-    path('', include('dashboard.urls')),  # adjust app name/path as needed
-    path('accounts/', include('accounts.urls')),
+    path('api/', include('dashboard.urls')),       
+    path("api/", include("dashboard_api.urls")),
+    path('accounts/', include('accounts.urls')),              
 ]

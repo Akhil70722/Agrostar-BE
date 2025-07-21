@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'accounts',
     'rest_framework_simplejwt',
     'corsheaders',
+    'dashboard_api'
 ]
 
 MIDDLEWARE = [

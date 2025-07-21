@@ -55,8 +55,10 @@
 # ]
 
 from django.urls import path
-from .views import QueueHistoryAPIView 
+from .views import QueueHistoryAPIView
+from django.urls import path, include 
 
 urlpatterns = [
-    path('api/queue-history/', QueueHistoryAPIView.as_view(), name='queue-history'),
+    path('queue-history/', QueueHistoryAPIView.as_view(), name='queue-history'),
+     path('api/dashboard_api/', include('dashboard_api.urls')),
 ]
