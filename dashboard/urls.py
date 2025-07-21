@@ -60,8 +60,3 @@ from .views import QueueHistoryAPIView
 urlpatterns = [
     path('api/queue-history/', QueueHistoryAPIView.as_view(), name='queue-history'),
 ]
-
-
-
-
-
