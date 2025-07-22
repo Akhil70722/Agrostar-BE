@@ -1,371 +1,3 @@
-# from rest_framework import viewsets
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-# from .serializers import DebtCollectionCallQueueSerializer, DebtCollectionCallHistorySerializer
-
-
-# class FlatDebtCollectionQueueView(APIView):
-#     def get(self, request):
-#         queue_queryset = DebtCollectionCallQueue.objects.all()
-#         history_queryset = DebtCollectionCallHistory.objects.all()
-
-#         # Map history records by phone number
-#         history_map = {}
-#         for history in history_queryset:
-#             key = history.phone_number  # You can change this key if needed
-#             if key not in history_map:
-#                 history_map[key] = []
-#             history_map[key].append(DebtCollectionCallHistorySerializer(history).data)
-
-#         # Prepare response: one flat object per queue record
-#         response = []
-#         for queue in queue_queryset:
-#             queue_data = DebtCollectionCallQueueSerializer(queue).data
-#             phone = queue.phone_number
-#             queue_data["call_history"] = history_map.get(phone, [])
-#             response.append(queue_data)
-
-#         return Response(response)
-
-
-# class DebtCollectionCallQueueViewSet(viewsets.ReadOnlyModelViewSet):
-#     queryset = DebtCollectionCallQueue.objects.all()
-#     serializer_class = DebtCollectionCallQueueSerializer
-
-
-# class DebtCollectionCallHistoryViewSet(viewsets.ReadOnlyModelViewSet):
-#     queryset = DebtCollectionCallHistory.objects.all()
-#     serializer_class = DebtCollectionCallHistorySerializer
-
-
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from .models import DebtCollectionCallQueue
-# from .serializers import FlatDebtCollectionSerializer
-
-# class FlatDebtCollectionAPIView(APIView):
-#     def get(self, request):
-#         queues = DebtCollectionCallQueue.objects.all().select_related('debtcollectioncallhistory')
-#         serializer = FlatDebtCollectionSerializer(queues, many=True)
-#         return Response(serializer.data)
-
-
-# views.py
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-# from .serializers import FlatDebtCollectionSerializer
-# from django.db.models import OuterRef, Subquery
-
-# class FlatDebtCollectionAPIView(APIView):
-#     def get(self, request):
-#         # Subquery to get only ONE matching history per call_id
-#         history_subquery = DebtCollectionCallHistory.objects.filter(
-#             call_id=OuterRef('call_id')
-#         ).order_by('id')  # or latest with '-id'
-
-#         # Annotate queue records with a related history instance
-#         queues = DebtCollectionCallQueue.objects.annotate(
-#             history_id=Subquery(history_subquery.values('id')[:1])
-#         ).select_related()
-
-#         # Prefetch the related DebtCollectionCallHistory objects using the annotated ID
-#         history_map = {
-#             h.id: h for h in DebtCollectionCallHistory.objects.filter(
-#                 id__in=[q.history_id for q in queues if q.history_id]
-#             )
-#         }
-
-#         for q in queues:
-#             q.history = history_map.get(q.history_id)
-
-#         # Group by call_id by using distinct call_id (you can also use .distinct('call_id') on Postgres)
-#         seen = set()
-#         unique_queues = []
-#         for q in queues:
-#             if q.call_id not in seen:
-#                 seen.add(q.call_id)
-#                 unique_queues.append(q)
-
-#         serializer = FlatDebtCollectionSerializer(unique_queues, many=True)
-#         return Response(serializer.data)
-
-
-# views.py
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-# from .serializers import DebtCollectionQueueSerializer, DebtCollectionHistorySerializer
-
-
-# class DebtCollectionCallView(APIView):
-#     def get(self, request):
-#         queues = DebtCollectionCallQueue.objects.all()
-#         serializer = DebtCollectionQueueSerializer(queues, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# class DebtCollectionCallHistoryView(APIView):
-#     def get(self, request):
-#         history = DebtCollectionCallHistory.objects.all()
-#         serializer = DebtCollectionHistorySerializer(history, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status
-
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-# from .serializers import DebtCollectionQueueSerializer, DebtCollectionHistorySerializer
-
-
-# class DebtCollectionCallView(APIView):
-#     def get(self, request):
-#         queues = DebtCollectionCallQueue.objects.all()
-#         serializer = DebtCollectionQueueSerializer(queues, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# class DebtCollectionCallHistoryView(APIView):
-#     def get(self, request):
-#         history = DebtCollectionCallHistory.objects.all()
-#         serializer = DebtCollectionHistorySerializer(history, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# class MappedDebtCollectionView(APIView):
-#     def get(self, request):
-#         queues = DebtCollectionCallQueue.objects.all()
-#         serializer = DebtCollectionQueueSerializer(queues, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-
-# from django.http import JsonResponse
-# from django.views import View
-# from django.db.models import Sum
-# from dashboard.models import DebtCollectionCallQueue, DebtCollectionCallHistory
-
-# # Helper function to safely convert to float
-# def safe_float(value):
-#     return round(float(value), 2) if value is not None else 0.0
-
-# class QueueHistoryCombinedView(View):
-#     def get(self, request):
-#         combined_data = []
-
-#         # Fetch all call queue records
-#         queue_data = DebtCollectionCallQueue.objects.all()
-
-#         for queue in queue_data:
-#             customer_id = queue.customer_id
-
-#             # Get call history related to this customer
-#             call_history = DebtCollectionCallHistory.objects.filter(customer_id=customer_id)
-
-#             # Aggregate sums
-#             total_interest = call_history.aggregate(total=Sum('call_id__interest_amount'))['total'] or 0
-#             total_outstanding = call_history.aggregate(total=Sum('call_id__total_outstanding'))['total'] or 0
-#             total_cd_amount = call_history.aggregate(total=Sum('call_id__total_cd_amount'))['total'] or 0
-
-#             # Date fields
-#             last_payment_date = queue.last_payment_date
-#             cd_valid_date = queue.cd_valid_till
-
-#             # Latest related call history (if any)
-#             latest_history = call_history.order_by('-call_time').first()
-
-#             data = {
-#                 "id": queue.call_id,  # call_id is primary key
-#                 "customer_name": queue.customer_name,
-#                 "customer_id": queue.customer_id,
-#                 "max_ocp": safe_float(queue.ocp),
-#                 "total_outstanding": safe_float(total_outstanding),
-#                 "total_interest": safe_float(total_interest),
-#                 "cd valid amount": safe_float(queue.cd_amount),
-#                 "cd valid date": cd_valid_date,
-#                 "last payment date": last_payment_date,
-#                 "total_cd_amount(upcoming overdue amount)": safe_float(total_cd_amount),
-#                 "mode_of_payment": latest_history.mode_of_payment if latest_history else None,
-#                 "promise_date": latest_history.promise_date if latest_history else None,
-#                 "promise_amount": safe_float(latest_history.promise_amount) if latest_history else 0.0,
-#             }
-
-#             combined_data.append(data)
-
-#         return JsonResponse(combined_data, safe=False)
-
-
-
-# from django.http import JsonResponse
-# from django.db.models import Max, Subquery, OuterRef
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-
-# def queue_history_view(request):
-#     # Subquery to get latest DebtCollectionCallHistory per customer
-#     latest_history = DebtCollectionCallHistory.objects.filter(
-#         customer_id=OuterRef('customer_id')
-#     ).order_by('-id')  # assumes latest by ID
-
-#     data = (
-#         DebtCollectionCallQueue.objects
-#         .values('customer_id', 'customer_name')
-#         .annotate(
-#             max_ocp=Max('ocp'),
-#             total_outstanding=Max('total_outstanding'),  
-#             total_interest=Max('interest_amount'),       
-#             cd_valid_amount=Max('cd_amount'),            
-#             cd_valid_date=Max('cd_valid_till'),
-#             last_payment_date=Max('last_payment_date'),
-#             total_cd_amount=Max('total_cd_amount'),
-#             mode_of_payment=Subquery(latest_history.values('mode_of_payment')[:1]),
-#             promise_date=Subquery(latest_history.values('promise_date')[:1]),
-#             promise_amount=Subquery(latest_history.values('promise_amount')[:1])
-#         )
-#         .order_by('customer_id')
-#     )
-
-#     # Format response
-#     results = []
-#     for item in data:
-#         results.append({
-#             "customer_name": item["customer_name"],
-#             "customer_id": item["customer_id"],
-#             "max_ocp": item["max_ocp"],
-#             "total_outstanding": item["total_outstanding"],
-#             "total_interest": item["total_interest"],
-#             "cd valid amount": item["cd_valid_amount"],
-#             "cd valid date": item["cd_valid_date"],
-#             "last payment date": item["last_payment_date"],
-#             "total_cd_amount(upcoming overdue amount)": item["total_cd_amount"],
-#             "mode_of_payment": item["mode_of_payment"],
-#             "promise_date": item["promise_date"],
-#             "promise_amount": item["promise_amount"],
-#         })
-
-#     return JsonResponse(results, safe=False)
-
-
-
-# from django.views import View
-# from django.http import JsonResponse
-# from django.db.models import Max, Subquery, OuterRef
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-
-# class QueueHistoryView(View):
-#     def get(self, request, *args, **kwargs):
-#         latest_history = DebtCollectionCallHistory.objects.filter(
-#             customer_id=OuterRef('customer_id')
-#         ).order_by('-id')
-
-#         data = (
-#             DebtCollectionCallQueue.objects
-#             .values('customer_id', 'customer_name')
-#             .annotate(
-#                 max_ocp=Max('ocp'),
-#                 total_outstanding=Max('total_outstanding'),
-#                 total_interest=Max('interest_amount'),
-#                 cd_valid_amount=Max('cd_amount'),
-#                 cd_valid_date=Max('cd_valid_till'),
-#                 last_payment_date=Max('last_payment_date'),
-#                 total_cd_amount=Max('total_cd_amount'),
-#                 mode_of_payment=Subquery(latest_history.values('mode_of_payment')[:1]),
-#                 promise_date=Subquery(latest_history.values('promise_date')[:1]),
-#                 promise_amount=Subquery(latest_history.values('promise_amount')[:1])
-#             )
-#             .order_by('customer_id')
-#         )
-
-#         results = []
-#         for item in data:
-#             results.append({
-#                 "customer_name": item["customer_name"],
-#                 "customer_id": item["customer_id"],
-#                 "max_ocp": item["max_ocp"],
-#                 "total_outstanding": item["total_outstanding"],
-#                 "total_interest": item["total_interest"],
-#                 "cd valid amount": item["cd_valid_amount"],
-#                 "cd valid date": item["cd_valid_date"],
-#                 "last payment date": item["last_payment_date"],
-#                 "total_cd_amount(upcoming overdue amount)": item["total_cd_amount"],
-#                 "mode_of_payment": item["mode_of_payment"],
-#                 "promise_date": item["promise_date"],
-#                 "promise_amount": item["promise_amount"],
-#             })
-
-#         return JsonResponse(results, safe=False)
-
-
-
-# from django.http import JsonResponse
-# from django.db.models import Max, Sum, Subquery, OuterRef, F
-# from django.views import View
-# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
-
-
-# class QueueHistoryView(View):
-#     def get(self, request):
-#         # Subquery: Latest history data for each customer_id
-#         latest_history = DebtCollectionCallHistory.objects.filter(
-#             customer_id=OuterRef('customer_id')
-#         ).order_by('-id')  # Assumes 'id' indicates most recent
-
-#         # Step 1: Grouping customer-level data
-#         customer_data = (
-#             DebtCollectionCallQueue.objects
-#             .values('customer_id', 'customer_name')
-#             .annotate(
-#                 max_ocp=Max('ocp'),
-#                 total_outstanding=Sum('total_outstanding'),
-#                 total_interest=Sum('interest_amount'),
-#                 cd_valid_amount=Sum('cd_amount'),
-#                 cd_valid_date=Max('cd_valid_till'),
-#                 last_payment_date=Max('last_payment_date'),
-#                 total_cd_amount=Sum('total_cd_amount'),
-#                 mode_of_payment=Subquery(latest_history.values('mode_of_payment')[:1]),
-#                 promise_date=Subquery(latest_history.values('promise_date')[:1]),
-#                 promise_amount=Subquery(latest_history.values('promise_amount')[:1])
-#             )
-#             .order_by('customer_id')
-#         )
-
-#         # Step 2: Constructing the final response list
-#         results = []
-#         for item in customer_data:
-#             # Fetch invoice-level details for this customer
-#             invoices = DebtCollectionCallQueue.objects.filter(
-#                 customer_id=item['customer_id']
-#             ).values(
-#                 'invoice_no',
-#                 'product',
-#                 'invoice_overdue',
-#                 'ocp'
-#             )
-
-#             results.append({
-#                 "customer_id": item["customer_id"],
-#                 "customer_name": item["customer_name"],
-#                 "max_ocp": item["max_ocp"],
-#                 "total_outstanding": item["total_outstanding"],
-#                 "total_interest": item["total_interest"],
-#                 "cd_valid_amount": item["cd_valid_amount"],
-#                 "cd_valid_date": item["cd_valid_date"],
-#                 "last_payment_date": item["last_payment_date"],
-#                 "total_cd_amount": item["total_cd_amount"],
-#                 "mode_of_payment": item["mode_of_payment"],
-#                 "promise_date": item["promise_date"],
-#                 "promise_amount": item["promise_amount"],
-#                 "invoices": list(invoices)
-#             })
-
-#         return JsonResponse(results, safe=False)
-
 # null values hai jiske that customer is removeed
 # from django.http import JsonResponse
 # from django.db.models import Max, Sum, Subquery, OuterRef, F
@@ -554,6 +186,338 @@
 #         if conclusion_filter:
 #             normalized_filter = conclusion_filter.strip().lower()
 #             filtered_history = filtered_history.filter(norm_conclusion=normalized_filter)
+
+#         # Annotate customer data
+#         customer_data = (
+#             queue_queryset
+#             .values('customer_id', 'customer_name')
+#             .annotate(
+#                 max_ocp=Max('ocp'),
+#                 total_outstanding=Sum('total_outstanding'),
+#                 total_interest=Sum('interest_amount'),
+#                 cd_valid_amount=Sum('cd_amount'),
+#                 cd_valid_date=Max('cd_valid_till'),
+#                 last_payment_date=Max('last_payment_date'),
+#                 total_cd_amount=Sum('total_cd_amount'),
+#                 mode_of_payment=Subquery(filtered_history.values('mode_of_payment')[:1]),
+#                 promise_date=Subquery(filtered_history.values('promise_date')[:1]),
+#                 promise_amount=Subquery(filtered_history.values('promise_amount')[:1]),
+#                 conclusion=Subquery(filtered_history.values('conclusion')[:1]),
+#             )
+#             .order_by('customer_id')
+#         )
+
+#         results = []
+#         for item in customer_data:
+#             # If conclusion_filter is provided, filter results again
+#             if conclusion_filter:
+#                 if not item['conclusion'] or item['conclusion'].strip().lower() != normalized_filter:
+#                     continue
+
+#             # Get invoices
+#             invoices = queue_queryset.filter(
+#                 customer_id=item['customer_id']
+#             ).values('invoice_no', 'product', 'invoice_overdue', 'ocp')
+
+#             if not invoices.exists():
+#                 continue
+
+#             results.append({
+#                 "customer_id": item["customer_id"],
+#                 "customer_name": item["customer_name"],
+#                 "max_ocp": item["max_ocp"],
+#                 "total_outstanding": item["total_outstanding"],
+#                 "total_interest": item["total_interest"],
+#                 "cd_valid_amount": item["cd_valid_amount"],
+#                 "cd_valid_date": item["cd_valid_date"],
+#                 "last_payment_date": item["last_payment_date"],
+#                 "total_cd_amount": item["total_cd_amount"],
+#                 "mode_of_payment": item["mode_of_payment"],
+#                 "promise_date": item["promise_date"],
+#                 "promise_amount": item["promise_amount"],
+#                 "conclusion": item["conclusion"],
+#                 "invoices": list(invoices)
+#             })
+
+#         return Response(results)
+
+
+
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
+# from django.db.models import Max, Sum, Subquery, OuterRef, Count
+# from django.db.models.functions import Lower
+# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
+# from datetime import datetime
+
+# class QueueHistoryAPIView(APIView):
+#     def get(self, request):
+#         # Get optional filters
+#         conclusion_filter = request.GET.get("conclusion")
+#         from_date = request.GET.get("from_date")
+#         to_date = request.GET.get("to_date")
+#         partner_id = request.GET.get("partner_id")  # actually customer_id
+
+#         # Start with all queue data
+#         queue_queryset = DebtCollectionCallQueue.objects.all()
+
+#         # Filter by dates if provided
+#         if from_date:
+#             try:
+#                 from_date_obj = datetime.strptime(from_date, "%Y-%m-%d")
+#                 queue_queryset = queue_queryset.filter(call_date__gte=from_date_obj)
+#             except ValueError:
+#                 return Response({"error": "Invalid from_date format. Use YYYY-MM-DD"}, status=400)
+
+#         if to_date:
+#             try:
+#                 to_date_obj = datetime.strptime(to_date, "%Y-%m-%d")
+#                 queue_queryset = queue_queryset.filter(call_date__lte=to_date_obj)
+#             except ValueError:
+#                 return Response({"error": "Invalid to_date format. Use YYYY-MM-DD"}, status=400)
+
+#         # Filter by customer_id if provided
+#         if partner_id:
+#             queue_queryset = queue_queryset.filter(customer_id=partner_id)
+
+#         # Prepare subquery for latest history with normalized conclusion (if provided)
+#         filtered_history = DebtCollectionCallHistory.objects.annotate(
+#             norm_conclusion=Lower('conclusion')
+#         ).filter(
+#             customer_id=OuterRef('customer_id')
+#         ).order_by('-id')
+
+#         # If conclusion_filter provided, filter subquery further
+#         if conclusion_filter:
+#             normalized_filter = conclusion_filter.strip().lower()
+#             filtered_history = filtered_history.filter(norm_conclusion=normalized_filter)
+
+#         # Annotate customer data
+#         customer_data = (
+#             queue_queryset
+#             .values('customer_id', 'customer_name')
+#             .annotate(
+#                 max_ocp=Max('ocp'),
+#                 total_outstanding=Sum('total_outstanding'),
+#                 total_interest=Sum('interest_amount'),
+#                 cd_valid_amount=Sum('cd_amount'),
+#                 cd_valid_date=Max('cd_valid_till'),
+#                 last_payment_date=Max('last_payment_date'),
+#                 total_cd_amount=Sum('total_cd_amount'),
+#                 mode_of_payment=Subquery(filtered_history.values('mode_of_payment')[:1]),
+#                 promise_date=Subquery(filtered_history.values('promise_date')[:1]),
+#                 promise_amount=Subquery(filtered_history.values('promise_amount')[:1]),
+#                 conclusion=Subquery(filtered_history.values('conclusion')[:1]),
+#                 call_attempts=Count('call_id')  # ✅ Added number of attempts
+#             )
+#             .order_by('customer_id')
+#         )
+
+#         results = []
+#         for item in customer_data:
+#             # If conclusion_filter is provided, filter results again
+#             if conclusion_filter:
+#                 if not item['conclusion'] or item['conclusion'].strip().lower() != normalized_filter:
+#                     continue
+
+#             # Get invoices
+#             invoices = queue_queryset.filter(
+#                 customer_id=item['customer_id']
+#             ).values('invoice_no', 'product', 'invoice_overdue', 'ocp')
+
+#             if not invoices.exists():
+#                 continue
+
+#             results.append({
+#                 "customer_id": item["customer_id"],
+#                 "customer_name": item["customer_name"],
+#                 "max_ocp": item["max_ocp"],
+#                 "total_outstanding": item["total_outstanding"],
+#                 "total_interest": item["total_interest"],
+#                 "cd_valid_amount": item["cd_valid_amount"],
+#                 "cd_valid_date": item["cd_valid_date"],
+#                 "last_payment_date": item["last_payment_date"],
+#                 "total_cd_amount": item["total_cd_amount"],
+#                 "mode_of_payment": item["mode_of_payment"],
+#                 "promise_date": item["promise_date"],
+#                 "promise_amount": item["promise_amount"],
+#                 "conclusion": item["conclusion"],
+#                 "call_attempts": item["call_attempts"],  # ✅ Return in response
+#                 "invoices": list(invoices)
+#             })
+
+#         return Response(results)
+
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
+# from django.db import connection
+# from datetime import datetime
+
+
+# # Helper function to run raw SQL and return list of dicts
+# def execute_raw_sql(query, params=None):
+#     with connection.cursor() as cursor:
+#         cursor.execute(query, params)
+#         desc = [col[0] for col in cursor.description]
+#         return [dict(zip(desc, row)) for row in cursor.fetchall()]
+
+
+# class QueueHistoryAPIView(APIView):
+#     def get(self, request):
+#         conclusion_filter = request.GET.get("conclusion")
+#         from_date = request.GET.get("from_date")
+#         to_date = request.GET.get("to_date")
+#         partner_id = request.GET.get("partner_id")
+
+#         # Validate date formats
+#         try:
+#             if from_date:
+#                 datetime.strptime(from_date, "%Y-%m-%d")
+#             if to_date:
+#                 datetime.strptime(to_date, "%Y-%m-%d")
+#         except ValueError:
+#             return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=400)
+
+#         # ✅ Corrected table names below
+#         main_query = """
+#             WITH latest_history AS (
+#                 SELECT DISTINCT ON (customer_id)
+#                     customer_id,
+#                     mode_of_payment,
+#                     promise_date,
+#                     promise_amount,
+#                     conclusion
+#                 FROM debtcollectioncallhistory
+#                 WHERE (%(conclusion_filter)s IS NULL OR LOWER(conclusion) = LOWER(%(conclusion_filter)s))
+#                 ORDER BY customer_id, id DESC
+#             ),
+#             queue_filtered AS (
+#                 SELECT *
+#                 FROM debtcollectioncallqueue
+#                 WHERE (%(from_date)s IS NULL OR call_date >= %(from_date)s)
+#                   AND (%(to_date)s IS NULL OR call_date <= %(to_date)s)
+#                   AND (%(partner_id)s IS NULL OR customer_id = %(partner_id)s)
+#             )
+#             SELECT
+#                 q.customer_id,
+#                 q.customer_name,
+#                 MAX(q.ocp) AS max_ocp,
+#                 SUM(q.total_outstanding) AS total_outstanding,
+#                 SUM(q.interest_amount) AS total_interest,
+#                 SUM(q.cd_amount) AS cd_valid_amount,
+#                 MAX(q.cd_valid_till) AS cd_valid_date,
+#                 MAX(q.last_payment_date) AS last_payment_date,
+#                 SUM(q.total_cd_amount) AS total_cd_amount,
+#                 COUNT(q.call_id) AS call_attempts,
+#                 lh.mode_of_payment,
+#                 lh.promise_date,
+#                 lh.promise_amount,
+#                 lh.conclusion
+#             FROM queue_filtered q
+#             LEFT JOIN latest_history lh ON q.customer_id = lh.customer_id
+#             GROUP BY q.customer_id, q.customer_name, lh.mode_of_payment, lh.promise_date, lh.promise_amount, lh.conclusion
+#             ORDER BY q.customer_id;
+#         """
+
+#         params = {
+#             "conclusion_filter": conclusion_filter,
+#             "from_date": from_date,
+#             "to_date": to_date,
+#             "partner_id": partner_id,
+#         }
+
+#         customer_data = execute_raw_sql(main_query, params)
+#         normalized_filter = conclusion_filter.strip().lower() if conclusion_filter else None
+
+#         results = []
+#         for item in customer_data:
+#             # Apply conclusion filter again (to mimic ORM behavior)
+#             if normalized_filter:
+#                 if not item['conclusion'] or item['conclusion'].strip().lower() != normalized_filter:
+#                     continue
+
+#             # ✅ Corrected table name here as well
+#             invoice_query = """
+#                 SELECT invoice_no, product, invoice_overdue, ocp
+#                 FROM debtcollectioncallqueue
+#                 WHERE customer_id = %s
+#             """
+#             invoices = execute_raw_sql(invoice_query, [item['customer_id']])
+
+#             if not invoices:
+#                 continue  # skip if no invoices found (mimic previous logic)
+
+#             # Final output dictionary
+#             results.append({
+#                 "customer_id": item["customer_id"],
+#                 "customer_name": item["customer_name"],
+#                 "max_ocp": item["max_ocp"],
+#                 "total_outstanding": item["total_outstanding"],
+#                 "total_interest": item["total_interest"],
+#                 "cd_valid_amount": item["cd_valid_amount"],
+#                 "cd_valid_date": item["cd_valid_date"],
+#                 "last_payment_date": item["last_payment_date"],
+#                 "total_cd_amount": item["total_cd_amount"],
+#                 "mode_of_payment": item["mode_of_payment"],
+#                 "promise_date": item["promise_date"],
+#                 "promise_amount": item["promise_amount"],
+#                 "conclusion": item["conclusion"],
+#                 "call_attempts": item["call_attempts"],
+#                 "invoices": invoices,
+#             })
+
+#         return Response(results)
+
+
+
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
+# from django.db.models import Max, Sum, Subquery, OuterRef
+# from django.db.models.functions import Lower
+# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
+# from datetime import datetime
+
+# class QueueHistoryAPIView(APIView):
+#     def get(self, request):
+#         # Get optional filters
+#         conclusion_filter = request.GET.get("conclusion")
+#         from_date = request.GET.get("from_date")
+#         to_date = request.GET.get("to_date")
+#         partner_id = request.GET.get("partner_id")  # actually customer_id
+
+#         # Start with all queue data
+#         queue_queryset = DebtCollectionCallQueue.objects.all()
+
+#         # Filter by dates if provided
+#         if from_date:
+#             try:
+#                 from_date_obj = datetime.strptime(from_date, "%Y-%m-%d")
+#                 queue_queryset = queue_queryset.filter(call_date__gte=from_date_obj)
+#             except ValueError:
+#                 return Response({"error": "Invalid from_date format. Use YYYY-MM-DD"}, status=400)
+
+#         if to_date:
+#             try:
+#                 to_date_obj = datetime.strptime(to_date, "%Y-%m-%d")
+#                 queue_queryset = queue_queryset.filter(call_date__lte=to_date_obj)
+#             except ValueError:
+#                 return Response({"error": "Invalid to_date format. Use YYYY-MM-DD"}, status=400)
+
+#         # Filter by customer_id if provided
+#         if partner_id:
+#             queue_queryset = queue_queryset.filter(customer_id=partner_id)
+
+#         # Prepare subquery for latest history with normalized conclusion (if provided)
+#         filtered_history = DebtCollectionCallHistory.objects.annotate(
+#             norm_conclusion=Lower('conclusion')
+#         ).filter(
+#             customer_id=OuterRef('customer_id')
+#         ).order_by('-id')
+
+#         # If conclusion_filter provided, filter subquery further
+#         if conclusion_filter:
+#             normalized_filter = conclusion_filter.strip().lower()
+#             filtered_history = filtered_history.filter(norm_conclusion=normalized_filter)
 #         else:
 #             normalized_filter = None
 
@@ -621,22 +585,22 @@
 #         return Response(results)
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Max, Sum, Subquery, OuterRef, Count
+from django.db.models import Max, Sum, Subquery, OuterRef
 from django.db.models.functions import Lower
 from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
 from datetime import datetime
- 
+
 class QueueHistoryAPIView(APIView):
     def get(self, request):
-        # Get optional filters
+        # Filters
         conclusion_filter = request.GET.get("conclusion")
         from_date = request.GET.get("from_date")
         to_date = request.GET.get("to_date")
         partner_id = request.GET.get("partner_id")  # actually customer_id
- 
+
         # Start with all queue data
         queue_queryset = DebtCollectionCallQueue.objects.all()
- 
+
         # Filter by dates if provided
         if from_date:
             try:
@@ -644,18 +608,18 @@ class QueueHistoryAPIView(APIView):
                 queue_queryset = queue_queryset.filter(call_date__gte=from_date_obj)
             except ValueError:
                 return Response({"error": "Invalid from_date format. Use YYYY-MM-DD"}, status=400)
- 
+
         if to_date:
             try:
                 to_date_obj = datetime.strptime(to_date, "%Y-%m-%d")
                 queue_queryset = queue_queryset.filter(call_date__lte=to_date_obj)
             except ValueError:
                 return Response({"error": "Invalid to_date format. Use YYYY-MM-DD"}, status=400)
- 
+
         # Filter by customer_id if provided
         if partner_id:
             queue_queryset = queue_queryset.filter(customer_id=partner_id)
- 
+
         # Prepare subquery for latest history with normalized conclusion (if provided)
         filtered_history = DebtCollectionCallHistory.objects.annotate(
             norm_conclusion=Lower('conclusion')
@@ -667,7 +631,7 @@ class QueueHistoryAPIView(APIView):
         if conclusion_filter:
             normalized_filter = conclusion_filter.strip().lower()
             filtered_history = filtered_history.filter(norm_conclusion=normalized_filter)
- 
+
         # Annotate customer data
         customer_data = (
             queue_queryset
@@ -684,23 +648,21 @@ class QueueHistoryAPIView(APIView):
                 promise_date=Subquery(filtered_history.values('promise_date')[:1]),
                 promise_amount=Subquery(filtered_history.values('promise_amount')[:1]),
                 conclusion=Subquery(filtered_history.values('conclusion')[:1]),
-                call_attempts=Count('call_id')  # ✅ Added number of attempts
             )
             .order_by('customer_id')
         )
 
         results = []
         for item in customer_data:
-            # If conclusion_filter is provided, filter results again
-            if conclusion_filter:
+            if normalized_filter:
                 if not item['conclusion'] or item['conclusion'].strip().lower() != normalized_filter:
                     continue
- 
+
             # Get invoices
             invoices = queue_queryset.filter(
                 customer_id=item['customer_id']
             ).values('invoice_no', 'product', 'invoice_overdue', 'ocp')
- 
+
             if not invoices.exists():
                 continue
 
@@ -709,18 +671,17 @@ class QueueHistoryAPIView(APIView):
             results.append({
                 "customer_id": item["customer_id"],
                 "customer_name": item["customer_name"],
-                "max_ocp": item["max_ocp"],
-                "total_outstanding": item["total_outstanding"],
-                "total_interest": item["total_interest"],
-                "cd_valid_amount": item["cd_valid_amount"],
+                "max_ocp": float(item["max_ocp"] or 0),
+                "total_outstanding": float(item["total_outstanding"] or 0),
+                "total_interest": float(item["total_interest"] or 0),
+                "cd_valid_amount": float(item["cd_valid_amount"] or 0),
                 "cd_valid_date": item["cd_valid_date"],
                 "last_payment_date": item["last_payment_date"],
-                "total_cd_amount": item["total_cd_amount"],
+                "total_cd_amount": float(item["total_cd_amount"] or 0),
                 "mode_of_payment": item["mode_of_payment"],
                 "promise_date": item["promise_date"],
-                "promise_amount": item["promise_amount"],
+                "promise_amount": float(item["promise_amount"] or 0),
                 "conclusion": item["conclusion"],
-                "call_attempts": item["call_attempts"],  # ✅ Return in response
                 "invoices": list(invoices)
             })
 
