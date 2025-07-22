@@ -506,13 +506,126 @@
 
 
 
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
+# from django.db.models import Max, Sum, Subquery, OuterRef
+# from django.db.models.functions import Lower
+# from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
+# from datetime import datetime
+
+# class QueueHistoryAPIView(APIView):
+#     def get(self, request):
+#         # Get optional filters
+#         conclusion_filter = request.GET.get("conclusion")
+#         from_date = request.GET.get("from_date")
+#         to_date = request.GET.get("to_date")
+#         partner_id = request.GET.get("partner_id")  # actually customer_id
+
+#         # Start with all queue data
+#         queue_queryset = DebtCollectionCallQueue.objects.all()
+
+#         # Filter by dates if provided
+#         if from_date:
+#             try:
+#                 from_date_obj = datetime.strptime(from_date, "%Y-%m-%d")
+#                 queue_queryset = queue_queryset.filter(call_date__gte=from_date_obj)
+#             except ValueError:
+#                 return Response({"error": "Invalid from_date format. Use YYYY-MM-DD"}, status=400)
+
+#         if to_date:
+#             try:
+#                 to_date_obj = datetime.strptime(to_date, "%Y-%m-%d")
+#                 queue_queryset = queue_queryset.filter(call_date__lte=to_date_obj)
+#             except ValueError:
+#                 return Response({"error": "Invalid to_date format. Use YYYY-MM-DD"}, status=400)
+
+#         # Filter by customer_id if provided
+#         if partner_id:
+#             queue_queryset = queue_queryset.filter(customer_id=partner_id)
+
+#         # Prepare subquery for latest history with normalized conclusion (if provided)
+#         filtered_history = DebtCollectionCallHistory.objects.annotate(
+#             norm_conclusion=Lower('conclusion')
+#         ).filter(
+#             customer_id=OuterRef('customer_id')
+#         ).order_by('-id')
+
+#         # If conclusion_filter provided, filter subquery further
+#         if conclusion_filter:
+#             normalized_filter = conclusion_filter.strip().lower()
+#             filtered_history = filtered_history.filter(norm_conclusion=normalized_filter)
+#         else:
+#             normalized_filter = None
+
+#         # Annotate customer data
+#         customer_data = (
+#             queue_queryset
+#             .values('customer_id', 'customer_name')
+#             .annotate(
+#                 max_ocp=Max('ocp'),
+#                 total_outstanding=Sum('total_outstanding'),
+#                 total_interest=Sum('interest_amount'),
+#                 cd_valid_amount=Sum('cd_amount'),
+#                 cd_valid_date=Max('cd_valid_till'),
+#                 last_payment_date=Max('last_payment_date'),
+#                 total_cd_amount=Sum('total_cd_amount'),
+#                 mode_of_payment=Subquery(filtered_history.values('mode_of_payment')[:1]),
+#                 promise_date=Subquery(filtered_history.values('promise_date')[:1]),
+#                 promise_amount=Subquery(filtered_history.values('promise_amount')[:1]),
+#                 conclusion=Subquery(filtered_history.values('conclusion')[:1]),
+#             )
+#             .order_by('customer_id')
+#         )
+
+#         # Collect all customer_ids
+#         customer_ids = [item['customer_id'] for item in customer_data]
+
+#         # Fetch all invoices for these customers in one query
+#         invoices_qs = queue_queryset.filter(
+#             customer_id__in=customer_ids
+#         ).values('customer_id', 'invoice_no', 'product', 'invoice_overdue', 'ocp')
+
+#         # Build a map: customer_id → list of invoices
+#         invoices_map = {}
+#         for inv in invoices_qs:
+#             invoices_map.setdefault(inv['customer_id'], []).append(inv)
+
+#         results = []
+#         for item in customer_data:
+#             # If conclusion_filter is provided, filter results again
+#             if normalized_filter:
+#                 if not item['conclusion'] or item['conclusion'].strip().lower() != normalized_filter:
+#                     continue
+
+#             invoices = invoices_map.get(item['customer_id'], [])
+#             if not invoices:
+#                 continue
+
+#             results.append({
+#                 "customer_id": item["customer_id"],
+#                 "customer_name": item["customer_name"],
+#                 "max_ocp": item["max_ocp"],
+#                 "total_outstanding": item["total_outstanding"],
+#                 "total_interest": item["total_interest"],
+#                 "cd_valid_amount": item["cd_valid_amount"],
+#                 "cd_valid_date": item["cd_valid_date"],
+#                 "last_payment_date": item["last_payment_date"],
+#                 "total_cd_amount": item["total_cd_amount"],
+#                 "mode_of_payment": item["mode_of_payment"],
+#                 "promise_date": item["promise_date"],
+#                 "promise_amount": item["promise_amount"],
+#                 "conclusion": item["conclusion"],
+#                 "invoices": invoices
+#             })
+
+#         return Response(results)
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Max, Sum, Subquery, OuterRef
+from django.db.models import Max, Sum, Subquery, OuterRef, Count
 from django.db.models.functions import Lower
 from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
 from datetime import datetime
-
+ 
 class QueueHistoryAPIView(APIView):
     def get(self, request):
         # Get optional filters
@@ -520,10 +633,10 @@ class QueueHistoryAPIView(APIView):
         from_date = request.GET.get("from_date")
         to_date = request.GET.get("to_date")
         partner_id = request.GET.get("partner_id")  # actually customer_id
-
+ 
         # Start with all queue data
         queue_queryset = DebtCollectionCallQueue.objects.all()
-
+ 
         # Filter by dates if provided
         if from_date:
             try:
@@ -531,18 +644,18 @@ class QueueHistoryAPIView(APIView):
                 queue_queryset = queue_queryset.filter(call_date__gte=from_date_obj)
             except ValueError:
                 return Response({"error": "Invalid from_date format. Use YYYY-MM-DD"}, status=400)
-
+ 
         if to_date:
             try:
                 to_date_obj = datetime.strptime(to_date, "%Y-%m-%d")
                 queue_queryset = queue_queryset.filter(call_date__lte=to_date_obj)
             except ValueError:
                 return Response({"error": "Invalid to_date format. Use YYYY-MM-DD"}, status=400)
-
+ 
         # Filter by customer_id if provided
         if partner_id:
             queue_queryset = queue_queryset.filter(customer_id=partner_id)
-
+ 
         # Prepare subquery for latest history with normalized conclusion (if provided)
         filtered_history = DebtCollectionCallHistory.objects.annotate(
             norm_conclusion=Lower('conclusion')
@@ -554,7 +667,7 @@ class QueueHistoryAPIView(APIView):
         if conclusion_filter:
             normalized_filter = conclusion_filter.strip().lower()
             filtered_history = filtered_history.filter(norm_conclusion=normalized_filter)
-
+ 
         # Annotate customer data
         customer_data = (
             queue_queryset
@@ -571,6 +684,7 @@ class QueueHistoryAPIView(APIView):
                 promise_date=Subquery(filtered_history.values('promise_date')[:1]),
                 promise_amount=Subquery(filtered_history.values('promise_amount')[:1]),
                 conclusion=Subquery(filtered_history.values('conclusion')[:1]),
+                call_attempts=Count('call_id')  # ✅ Added number of attempts
             )
             .order_by('customer_id')
         )
@@ -581,14 +695,16 @@ class QueueHistoryAPIView(APIView):
             if conclusion_filter:
                 if not item['conclusion'] or item['conclusion'].strip().lower() != normalized_filter:
                     continue
-
+ 
             # Get invoices
             invoices = queue_queryset.filter(
                 customer_id=item['customer_id']
             ).values('invoice_no', 'product', 'invoice_overdue', 'ocp')
-
+ 
             if not invoices.exists():
                 continue
+
+            print(f"[QueueHistoryAPIView] customer_id: {item['customer_id']}, call_attempts: {item['call_attempts']}")
 
             results.append({
                 "customer_id": item["customer_id"],
@@ -604,6 +720,7 @@ class QueueHistoryAPIView(APIView):
                 "promise_date": item["promise_date"],
                 "promise_amount": item["promise_amount"],
                 "conclusion": item["conclusion"],
+                "call_attempts": item["call_attempts"],  # ✅ Return in response
                 "invoices": list(invoices)
             })
 
