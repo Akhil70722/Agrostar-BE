@@ -316,9 +316,9 @@ class PartnersDataAPIView(APIView):
         partner_data = list(
             filtered_qs.values("customer_id", "customer_name")
             .annotate(
-                no_of_attempts=Count("call_id"),
+                no_of_attempts=Max("call_tried"),
                 ocp=Max("ocp"),
-                overdue_amount=Sum("invoice_overdue"),
+                overdue_amount=Max("total_outstanding"),
                 cd_valid_till=Max("cd_valid_till"),
                 cd_amount=Sum("cd_amount"),
                 total_cd_amount=Sum("total_cd_amount"),

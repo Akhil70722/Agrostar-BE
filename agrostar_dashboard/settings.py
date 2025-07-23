@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'dashboard_api',
     'partners_data',
+    'communication',
 ]
 
 MIDDLEWARE = [
