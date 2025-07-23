@@ -542,7 +542,7 @@ class QueueHistoryAPIView(APIView):
                 MAX(q.cd_valid_till) AS cd_valid_date,
                 MAX(q.last_payment_date) AS last_payment_date,
                 SUM(q.total_cd_amount) AS total_cd_amount,
-                COUNT(q.call_id) AS call_attempts,
+                COUNT(q.call_id) AS call_attempts,  
                 lh.mode_of_payment,
                 lh.promise_date,
                 lh.promise_amount,
