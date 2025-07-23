@@ -60,5 +60,5 @@ from django.urls import path, include
 
 urlpatterns = [
     path('queue-history/', QueueHistoryAPIView.as_view(), name='queue-history'),
-     path('api/dashboard_api/', include('dashboard_api.urls')),
+    # path('api/dashboard_api/', include('dashboard_api.urls')),
 ]

@@ -294,6 +294,21 @@ class PartnersDataAPIView(APIView):
             else:
                 queue_qs = queue_qs.filter(call_connected=False)
 
+        # Apply partner_id filter
+        partner_id = request.GET.get("partner_id")
+        if partner_id:
+            queue_qs = queue_qs.filter(customer_id=partner_id)
+
+        # Apply from_date and to_date filter on call_date
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+        if from_date and to_date:
+            queue_qs = queue_qs.filter(call_date__range=[from_date, to_date])
+        elif from_date:
+            queue_qs = queue_qs.filter(call_date__gte=from_date)
+        elif to_date:
+            queue_qs = queue_qs.filter(call_date__lte=to_date)
+
         # Filter out rows without valid customer_id (for aggregation)
         filtered_qs = queue_qs.exclude(customer_id__isnull=True).exclude(customer_id="")
 
