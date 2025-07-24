@@ -283,36 +283,29 @@ class PartnersDataAPIView(APIView):
 # =======================
 class PartnerAttemptDetailsAPIView(APIView):
     def get(self, request, partner_id):
-        # Fetch all queue records for the partner_id
-        records = DebtCollectionCallQueue.objects.filter(customer_id=partner_id).order_by("-call_date")
-
+        records = DebtCollectionCallHistory.objects.filter(customer_id=partner_id).order_by("call_time")
         if not records.exists():
-            return Response(
-                {"detail": "No call attempts found for this partner ID."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": "No call attempts found for this partner ID."},
+                            status=status.HTTP_404_NOT_FOUND)
 
         response = []
-        for idx, r in enumerate(records, start=1):
-            # Fetch history matching the call_id of this record
-            history = DebtCollectionCallHistory.objects.filter(call_id=r.call_id).order_by("-promise_date").first()
-
+        for r in records:
+            queue_obj = DebtCollectionCallQueue.objects.filter(call_id=r.call_id).first()
             response.append({
-                "serial_number": idx,
-                "customer_id": r.customer_id,
+                "call_id": r.call_id,
+                "phone_number": r.phone_number,
                 "customer_name": r.customer_name,
-                # "no_of_attempts": r.call_tried or 0,
-                "ocp": float(r.ocp or 0),
-                "total_outstanding": float(r.total_outstanding or 0),
-                "cd_valid_till": r.cd_valid_till,
-                "cd_amount": float(r.cd_amount or 0),
-                "total_cd_amount": float(r.total_cd_amount or 0),
-                "product": r.product or "",
-                "promise_date": history.promise_date if history else None,
-                "promise_amount": float(history.promise_amount or 0) if history else 0,
+                "call_time": r.call_time,
+                "call_duration": r.call_duration,
+                "conclusion": r.conclusion,
+                "call_summary_notes": r.call_summary_notes,
+                "promise_date":r.promise_date,
+                "promise_amount":r.promise_amount,
+                "recording": r.recording.url if r.recording else None    
             })
 
-        return Response({"data": response})
+        return Response(response, status=status.HTTP_200_OK)
+
 
 
 # =======================
