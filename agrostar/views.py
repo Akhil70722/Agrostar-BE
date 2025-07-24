@@ -204,7 +204,7 @@ class PartnersDataAPIView(APIView):
 
         # Date filters
         from_date = request.GET.get("from_date")
-        to_date   = request.GET.get("to_date")
+        to_date = request.GET.get("to_date")
         if from_date and to_date:
             qs = qs.filter(call_date__range=[from_date, to_date])
         elif from_date:
@@ -217,12 +217,13 @@ class PartnersDataAPIView(APIView):
 
         # Aggregate queue data per customer
         partner_data = qs.values("customer_id", "customer_name").annotate(
-            no_of_attempts   = Max("call_tried"),
-            ocp              = Max("ocp"),
-            total_outstanding= Max("total_outstanding"),
-            cd_valid_till    = Max("cd_valid_till"),
-            cd_amount        = Max("cd_amount"),
-            total_cd_amount  = Max("total_cd_amount"),
+            no_of_attempts    = Max("call_tried"),
+            ocp               = Max("ocp"),
+            total_outstanding = Max("total_outstanding"),
+            cd_valid_till     = Max("cd_valid_till"),
+            cd_amount         = Max("cd_amount"),
+            total_cd_amount   = Max("total_cd_amount"),
+            as_on_date        = Max("call_date"),  # 👈 added this line
         )
 
         customer_ids = [p["customer_id"] for p in partner_data]
@@ -239,7 +240,7 @@ class PartnersDataAPIView(APIView):
         )
         history_map = {
             h["customer_id"]: {
-                "promise_date":   h["promise_date"],
+                "promise_date": h["promise_date"],
                 "promise_amount": float(h["promise_amount"] or 0),
             }
             for h in history_agg
@@ -271,6 +272,7 @@ class PartnersDataAPIView(APIView):
                 "promise_date":      hist.get("promise_date"),
                 "promise_amount":    hist.get("promise_amount", 0),
                 "product_count":     len(prods),
+                "as_on_date":        item["as_on_date"],  # 👈 added this line to response
             })
 
         return Response({"data": response_data})
@@ -281,24 +283,36 @@ class PartnersDataAPIView(APIView):
 # =======================
 class PartnerAttemptDetailsAPIView(APIView):
     def get(self, request, partner_id):
-        records = DebtCollectionCallHistory.objects.filter(customer_id=partner_id).order_by("call_time")
+        # Fetch all queue records for the partner_id
+        records = DebtCollectionCallQueue.objects.filter(customer_id=partner_id).order_by("-call_date")
+
         if not records.exists():
-            return Response({"detail": "No call attempts found for this partner ID."},
-                            status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "No call attempts found for this partner ID."},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         response = []
         for idx, r in enumerate(records, start=1):
-            queue_obj = DebtCollectionCallQueue.objects.filter(call_id=r.call_id).first()
+            # Fetch history matching the call_id of this record
+            history = DebtCollectionCallHistory.objects.filter(call_id=r.call_id).order_by("-promise_date").first()
+
             response.append({
-                "call_id":        queue_obj.call_id if queue_obj else None,
-                "customer_name":  r.customer_name,
-                "partner_id":     r.customer_id,
-                "attempt_number": idx,
-                "created_at":     r.call_time,
-                "conclusion":     r.conclusion,
+                "serial_number": idx,
+                "customer_id": r.customer_id,
+                "customer_name": r.customer_name,
+                # "no_of_attempts": r.call_tried or 0,
+                "ocp": float(r.ocp or 0),
+                "total_outstanding": float(r.total_outstanding or 0),
+                "cd_valid_till": r.cd_valid_till,
+                "cd_amount": float(r.cd_amount or 0),
+                "total_cd_amount": float(r.total_cd_amount or 0),
+                "product": r.product or "",
+                "promise_date": history.promise_date if history else None,
+                "promise_amount": float(history.promise_amount or 0) if history else 0,
             })
 
-        return Response(response, status=status.HTTP_200_OK)
+        return Response({"data": response})
 
 
 # =======================

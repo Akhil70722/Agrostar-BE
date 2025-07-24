@@ -20,11 +20,6 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    # path('admin/', admin.site.urls),
-    # path('api/dashboard/', include('dashboard.urls')),       
-    # path("api/dashboard_api/", include("dashboard_api.urls")),
-    # path('accounts/', include('accounts.urls')),
-    # path('api/', include('partners_data.urls')), 
-    # path('api/',include('communication.urls')),
+    path('accounts/', include('accounts.urls')),
     path('api/', include('agrostar.urls'))
 ]
