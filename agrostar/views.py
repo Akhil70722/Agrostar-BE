@@ -9,6 +9,7 @@ from rest_framework import status
 from django.db.models import Max, Sum
 import json
 from django.utils.timezone import now
+from django.db.models.functions import TruncDate
 
 
 # =======================
@@ -282,71 +283,230 @@ class PartnersDataAPIView(APIView):
 # 2. After clicking on number of attempts 
 # =======================
 
+# class PartnerAttemptDetailsAPIView(APIView):
+#     def get(self, request, partner_id):
+#         # 1) Fetch all call history for this partner
+#         history_qs = (
+#             DebtCollectionCallHistory.objects
+#             .filter(customer_id=partner_id)
+#             .order_by("call_time")
+#         )
+#         if not history_qs.exists():
+#             return Response(
+#                 {"detail": "No call attempts found for this partner ID."},
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+
+#         # 2) Fetch all queue entries for this partner
+#         queue_qs = DebtCollectionCallQueue.objects.filter(customer_id=partner_id)
+
+#         # 3) Build a lookup: (call_id) → queue data
+#         queue_map = {q.call_id: q for q in queue_qs}
+
+#         # 4) Build a date→max OCP map
+#         #    Group queue entries by their call_date, compute max ocp per date
+#         ocp_by_date = defaultdict(float)
+#         for q in queue_qs:
+#             if q.call_date:
+#                 existing = ocp_by_date[q.call_date]
+#                 ocp_by_date[q.call_date] = max(existing, float(q.ocp or 0))
+
+#         # 5) Construct attempts list
+#         attempts = []
+#         for idx, h in enumerate(history_qs, start=1):
+#             # get queue side data
+#             q = queue_map.get(h.call_id)
+#             call_date = q.call_date if q else None
+
+#             attempts.append({
+#                 "attempt_no":       idx,
+#                 "call_time":        h.call_time,
+#                 "call_duration":    h.call_duration,
+#                 "conclusion":       h.conclusion,
+#                 "call_summary_notes": h.call_summary_notes,
+#                 "recording_url":    h.recording.url if h.recording else None,
+#                 "promise_date":     h.promise_date,
+#                 "promise_amount":   h.promise_amount,
+#                 "product":          q.product if q else "",
+#                 "invoice_no":       q.invoice_no if q else "",
+#                 "ocp":              float(q.ocp or 0) if q else 0.0,
+#                 "total_outstanding":float(q.total_outstanding or 0) if q else 0.0,
+#                 # New field: max ocp on that call_date
+#                 "day_max_ocp":      ocp_by_date.get(call_date, 0.0)
+#             })
+
+#         # 6) Determine partner_name from queue or history
+#         if queue_qs:
+#             partner_name = queue_qs[0].customer_name
+#         else:
+#             partner_name = history_qs[0].customer_name
+
+#         # 7) Return
+#         return Response({
+#             "partner_id":   partner_id,
+#             "partner_name": partner_name,
+#             "attempts":     attempts
+#         }, status=status.HTTP_200_OK)
+
+
+# class PartnerAttemptDetailsAPIView(APIView):
+#     def get(self, request, partner_id):
+#         # Step 1: Get all call history for this partner, annotate latest call_time per date
+#         raw_history = (
+#             DebtCollectionCallHistory.objects
+#             .filter(customer_id=partner_id)
+#             .values("call_time__date")
+#             .annotate(last_call_time=Max("call_time"))
+#             .order_by("last_call_time")
+#         )
+
+#         # Extract the latest call_time for each date
+#         latest_call_times = [entry["last_call_time"] for entry in raw_history]
+
+#         # Step 2: Fetch those specific call records
+#         history_qs = DebtCollectionCallHistory.objects.filter(call_time__in=latest_call_times)
+
+#         if not history_qs.exists():
+#             return Response(
+#                 {"detail": "No call attempts found for this partner ID."},
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+
+#         # Step 3: Get all call queue entries for the partner
+#         queue_qs = DebtCollectionCallQueue.objects.filter(customer_id=partner_id)
+
+#         # Step 4: Build a call_id → queue mapping
+#         queue_map = {q.call_id: q for q in queue_qs}
+
+#         # Step 5: Build a date → max ocp mapping
+#         ocp_by_date = defaultdict(float)
+#         for q in queue_qs:
+#             if q.call_date:
+#                 ocp_by_date[q.call_date] = max(ocp_by_date[q.call_date], float(q.ocp or 0))
+
+#         # Step 6: Construct results
+#         attempts = []
+#         for idx, h in enumerate(history_qs.order_by("call_time"), start=1):
+#             q = queue_map.get(h.call_id)
+#             call_date = q.call_date if q else h.call_time.date()
+
+#             attempts.append({
+#                 "attempt_no":         idx,
+#                 "date":               call_date,
+#                 "call_time":          h.call_time,
+#                 "call_duration":      h.call_duration,
+#                 "conclusion":         h.conclusion,
+#                 "call_summary_notes": h.call_summary_notes,
+#                 "recording_url":      h.recording.url if h.recording else None,
+#                 "promise_date":       h.promise_date,
+#                 "promise_amount":     h.promise_amount,
+#                 "product":            q.product if q else "",
+#                 "invoice_no":         q.invoice_no if q else "",
+#                 "ocp":                float(q.ocp or 0) if q else 0.0,
+#                 "total_outstanding":  float(q.total_outstanding or 0) if q else 0.0,
+#                 "day_max_ocp":        ocp_by_date.get(call_date, 0.0),
+#             })
+
+#         # Step 7: Get partner name
+#         partner_name = (
+#             queue_qs[0].customer_name if queue_qs else history_qs[0].customer_name
+#         )
+
+#         # Step 8: Return response
+#         return Response({
+#             "partner_id":   partner_id,
+#             "partner_name": partner_name,
+#             "attempts":     attempts
+#         }, status=status.HTTP_200_OK)
+
+
 class PartnerAttemptDetailsAPIView(APIView):
     def get(self, request, partner_id):
-        # 1) Fetch all call history for this partner
-        history_qs = (
+        # 1. Get all call history for the partner with call_date (truncated call_time)
+        records = (
             DebtCollectionCallHistory.objects
             .filter(customer_id=partner_id)
-            .order_by("call_time")
+            .annotate(call_date=TruncDate("call_time"))
+            .order_by("call_date", "-call_time")
         )
-        if not history_qs.exists():
+
+        if not records.exists():
             return Response(
                 {"detail": "No call attempts found for this partner ID."},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
 
-        # 2) Fetch all queue entries for this partner
-        queue_qs = DebtCollectionCallQueue.objects.filter(customer_id=partner_id)
+        # 2. Only keep the latest call for each date
+        date_wise_attempts = {}
 
-        # 3) Build a lookup: (call_id) → queue data
-        queue_map = {q.call_id: q for q in queue_qs}
+        for r in records:
+            date_str = str(r.call_date)
+            if date_str not in date_wise_attempts:
+                max_ocp = (
+                    DebtCollectionCallQueue.objects
+                    .filter(customer_id=partner_id, call_date=r.call_date)
+                    .aggregate(max_ocp=Max("ocp"))["max_ocp"] or 0.0
+                )
 
-        # 4) Build a date→max OCP map
-        #    Group queue entries by their call_date, compute max ocp per date
-        ocp_by_date = defaultdict(float)
-        for q in queue_qs:
-            if q.call_date:
-                existing = ocp_by_date[q.call_date]
-                ocp_by_date[q.call_date] = max(existing, float(q.ocp or 0))
+                date_wise_attempts[date_str] = {
+                    "call_id": r.call_id,
+                    "call_time": r.call_time.strftime("%Y-%m-%d %H:%M:%S") if r.call_time else None,
+                    "date": date_str,
+                    "phone_number": r.phone_number,
+                    "customer_name": r.customer_name,
+                    "conclusion": r.conclusion,
+                    "call_summary_notes": r.call_summary_notes,
+                    "call_duration": r.call_duration,
+                    "recording_url": r.recording.url if r.recording else None,
+                    "mode_of_payment": r.mode_of_payment,
+                    "promise_date": str(r.promise_date) if r.promise_date else None,
+                    "promise_amount": r.promise_amount,
+                    "disconnect_type": r.disconnect_type,
+                    "max_ocp": max_ocp,
+                }
 
-        # 5) Construct attempts list
-        attempts = []
-        for idx, h in enumerate(history_qs, start=1):
-            # get queue side data
-            q = queue_map.get(h.call_id)
-            call_date = q.call_date if q else None
+        return Response(list(date_wise_attempts.values()), status=status.HTTP_200_OK)
 
-            attempts.append({
-                "attempt_no":       idx,
-                "call_time":        h.call_time,
-                "call_duration":    h.call_duration,
-                "conclusion":       h.conclusion,
-                "call_summary_notes": h.call_summary_notes,
-                "recording_url":    h.recording.url if h.recording else None,
-                "promise_date":     h.promise_date,
-                "promise_amount":   h.promise_amount,
-                "product":          q.product if q else "",
-                "invoice_no":       q.invoice_no if q else "",
-                "ocp":              float(q.ocp or 0) if q else 0.0,
-                "total_outstanding":float(q.total_outstanding or 0) if q else 0.0,
-                # New field: max ocp on that call_date
-                "day_max_ocp":      ocp_by_date.get(call_date, 0.0)
-            })
 
-        # 6) Determine partner_name from queue or history
-        if queue_qs:
-            partner_name = queue_qs[0].customer_name
-        else:
-            partner_name = history_qs[0].customer_name
+# class PartnerAttemptDetailsAPIView(APIView):
+#     def get(self, request, partner_id):
+#         # 1. Get all call history for the partner, with call_date annotated
+#         records = (
+#             DebtCollectionCallHistory.objects
+#             .filter(customer_id=partner_id)
+#             .annotate(call_date=TruncDate("call_time"))
+#             .order_by("call_date", "-call_time")
+#         )
 
-        # 7) Return
-        return Response({
-            "partner_id":   partner_id,
-            "partner_name": partner_name,
-            "attempts":     attempts
-        }, status=status.HTTP_200_OK)
+#         if not records.exists():
+#             return Response(
+#                 {"detail": "No call attempts found for this partner ID."},
+#                 status=status.HTTP_404_NOT_FOUND,
+#             )
 
+#         # 2. Keep only one record per date (latest call of the day)
+#         date_wise_attempts = {}
+
+#         for r in records:
+#             date_str = str(r.call_date)
+#             if date_str not in date_wise_attempts:
+#                 # ✅ FIX: use `call_date` instead of `call_time`
+#                 max_ocp = (
+#                     DebtCollectionCallQueue.objects
+#                     .filter(customer_id=partner_id, call_date=r.call_date)
+#                     .aggregate(max_ocp=Max("ocp"))["max_ocp"] or 0.0
+#                 )
+
+#                 date_wise_attempts[date_str] = {
+#                     "call_id": r.call_id,
+#                     "call_time": r.call_time.strftime("%Y-%m-%d %H:%M:%S"),
+#                     "date": date_str,
+#                     "phone_number": r.phone_number,
+#                     "conclusion": r.conclusion,
+#                     "max_ocp": max_ocp,
+#                 }
+
+#         return Response(list(date_wise_attempts.values()), status=status.HTTP_200_OK)
 
 
 # =======================
