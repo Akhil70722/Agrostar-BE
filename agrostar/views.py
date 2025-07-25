@@ -8,6 +8,7 @@ from .models import DebtCollectionCallQueue, DebtCollectionCallHistory
 from rest_framework import status
 from django.db.models import Max, Sum
 import json
+from django.utils.timezone import now
 
 
 # =======================
@@ -177,7 +178,6 @@ class CardsAPI(APIView):
         return Response(results)
 
 
-
 # =======================
 # Partners API
 # =======================
@@ -281,30 +281,71 @@ class PartnersDataAPIView(APIView):
 # =======================
 # 2. After clicking on number of attempts 
 # =======================
+
 class PartnerAttemptDetailsAPIView(APIView):
     def get(self, request, partner_id):
-        records = DebtCollectionCallHistory.objects.filter(customer_id=partner_id).order_by("call_time")
-        if not records.exists():
-            return Response({"detail": "No call attempts found for this partner ID."},
-                            status=status.HTTP_404_NOT_FOUND)
+        # 1) Fetch all call history for this partner
+        history_qs = (
+            DebtCollectionCallHistory.objects
+            .filter(customer_id=partner_id)
+            .order_by("call_time")
+        )
+        if not history_qs.exists():
+            return Response(
+                {"detail": "No call attempts found for this partner ID."},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        response = []
-        for r in records:
-            queue_obj = DebtCollectionCallQueue.objects.filter(call_id=r.call_id).first()
-            response.append({
-                "call_id": r.call_id,
-                "phone_number": r.phone_number,
-                "customer_name": r.customer_name,
-                "call_time": r.call_time,
-                "call_duration": r.call_duration,
-                "conclusion": r.conclusion,
-                "call_summary_notes": r.call_summary_notes,
-                "promise_date":r.promise_date,
-                "promise_amount":r.promise_amount,
-                "recording": r.recording.url if r.recording else None    
+        # 2) Fetch all queue entries for this partner
+        queue_qs = DebtCollectionCallQueue.objects.filter(customer_id=partner_id)
+
+        # 3) Build a lookup: (call_id) → queue data
+        queue_map = {q.call_id: q for q in queue_qs}
+
+        # 4) Build a date→max OCP map
+        #    Group queue entries by their call_date, compute max ocp per date
+        ocp_by_date = defaultdict(float)
+        for q in queue_qs:
+            if q.call_date:
+                existing = ocp_by_date[q.call_date]
+                ocp_by_date[q.call_date] = max(existing, float(q.ocp or 0))
+
+        # 5) Construct attempts list
+        attempts = []
+        for idx, h in enumerate(history_qs, start=1):
+            # get queue side data
+            q = queue_map.get(h.call_id)
+            call_date = q.call_date if q else None
+
+            attempts.append({
+                "attempt_no":       idx,
+                "call_time":        h.call_time,
+                "call_duration":    h.call_duration,
+                "conclusion":       h.conclusion,
+                "call_summary_notes": h.call_summary_notes,
+                "recording_url":    h.recording.url if h.recording else None,
+                "promise_date":     h.promise_date,
+                "promise_amount":   h.promise_amount,
+                "product":          q.product if q else "",
+                "invoice_no":       q.invoice_no if q else "",
+                "ocp":              float(q.ocp or 0) if q else 0.0,
+                "total_outstanding":float(q.total_outstanding or 0) if q else 0.0,
+                # New field: max ocp on that call_date
+                "day_max_ocp":      ocp_by_date.get(call_date, 0.0)
             })
 
-        return Response(response, status=status.HTTP_200_OK)
+        # 6) Determine partner_name from queue or history
+        if queue_qs:
+            partner_name = queue_qs[0].customer_name
+        else:
+            partner_name = history_qs[0].customer_name
+
+        # 7) Return
+        return Response({
+            "partner_id":   partner_id,
+            "partner_name": partner_name,
+            "attempts":     attempts
+        }, status=status.HTTP_200_OK)
 
 
 
@@ -324,6 +365,94 @@ class TotalPartnerEngagementAPIView(APIView):
 # =======================
 # Communication API
 # =======================
+# class CommunicationAPIView(APIView):
+#     def get(self, request):
+#         partner_id = request.GET.get('partner_id')
+
+#         if not partner_id:
+#             return Response({"error": "partner_id is required"}, status=400)
+
+#         with connection.cursor() as cursor:
+#             cursor.execute("""
+#                 SELECT DISTINCT ON (h.call_id)
+#                 h.id,
+#                 h.call_id,
+#                 q.partner_company_name,
+#                 h.call_time,
+#                 h.conversation_json,
+#                 h.recording,
+#                 h.call_summary_notes,
+#                 h.call_duration,
+#                 h.conclusion
+#                 FROM  debtcollectioncallhistory h
+#                 LEFT JOIN debtcollectioncallqueue q ON  h.customer_id = q.customer_id
+#                 WHERE h.customer_id = %s
+#                 ORDER BY h.call_id, h.call_time DESC;
+#             """, [partner_id])
+#             rows = cursor.fetchall()
+
+#         result = []
+#         for row in rows:
+#             (
+#                 history_id,
+#                 conversation_id,
+#                 partner,
+#                 call_time,
+#                 conversation_json,
+#                 recording,
+#                 call_summary_notes,
+#                 call_duration,
+#                 conclusion
+#             ) = row
+
+#             conversation_date = call_time.date() if call_time else None
+
+#             # Parse JSON safely
+#             try:
+#                 parsed_json = json.loads(conversation_json) if conversation_json else {}
+#             except Exception:
+#                 parsed_json = {}
+
+#             is_empty_json = parsed_json == {}
+
+#             # Handle default values for empty json
+#             if is_empty_json:
+#                 call_summary_notes = "Call Attempted, Customer did not pick up"
+#                 call_duration = 0
+#                 conclusion = "No Response"
+#                 recording_url = None
+#             else:
+#                 # Extract recording URL from conversation data if present
+#                 recording_url = None
+#                 try:
+#                     conversation_data = parsed_json.get("conversation", [])
+#                     for entry in conversation_data:
+#                         if isinstance(entry, dict) and "url" in entry:
+#                             recording_url = entry["url"]
+#                             break
+#                 except Exception:
+#                     pass
+
+#                 # Fallback to DB field if no recording found in JSON
+#                 if not recording_url and recording:
+#                     recording = recording.strip()
+#                     recording_url = f"/media/{recording}" if not recording.startswith("/media/") else recording
+
+#             result.append({
+#                 "partner": partner,
+#                 "conversation_type": "AI Call",
+#                 "conversation_id": conversation_id,
+#                 "conversation_date": conversation_date,
+#                 # "conversation_data": parsed_json,
+#                 "recording_url": recording_url,
+#                 "call_summary_notes": call_summary_notes or "",
+#                 "call_duration": call_duration or 0,
+#                 "conclusion": conclusion or ""
+#             })
+
+#         return Response(result)
+
+
 class CommunicationAPIView(APIView):
     def get(self, request):
         partner_id = request.GET.get('partner_id')
@@ -334,17 +463,17 @@ class CommunicationAPIView(APIView):
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT DISTINCT ON (h.call_id)
-                h.id,
-                h.call_id,
-                q.partner_company_name,
-                h.call_time,
-                h.conversation_json,
-                h.recording,
-                h.call_summary_notes,
-                h.call_duration,
-                h.conclusion
-                FROM  debtcollectioncallhistory h
-                LEFT JOIN debtcollectioncallqueue q ON  h.customer_id = q.customer_id
+                    h.id,
+                    h.call_id,
+                    q.customer_name,  -- changed from partner_company_name
+                    h.call_time,
+                    h.conversation_json,
+                    h.recording,
+                    h.call_summary_notes,
+                    h.call_duration,
+                    h.conclusion
+                FROM debtcollectioncallhistory h
+                LEFT JOIN debtcollectioncallqueue q ON h.customer_id = q.customer_id
                 WHERE h.customer_id = %s
                 ORDER BY h.call_id, h.call_time DESC;
             """, [partner_id])
@@ -355,7 +484,7 @@ class CommunicationAPIView(APIView):
             (
                 history_id,
                 conversation_id,
-                partner,
+                customer_name,  # renamed from partner
                 call_time,
                 conversation_json,
                 recording,
@@ -366,7 +495,6 @@ class CommunicationAPIView(APIView):
 
             conversation_date = call_time.date() if call_time else None
 
-            # Parse JSON safely
             try:
                 parsed_json = json.loads(conversation_json) if conversation_json else {}
             except Exception:
@@ -374,14 +502,12 @@ class CommunicationAPIView(APIView):
 
             is_empty_json = parsed_json == {}
 
-            # Handle default values for empty json
             if is_empty_json:
                 call_summary_notes = "Call Attempted, Customer did not pick up"
                 call_duration = 0
                 conclusion = "No Response"
                 recording_url = None
             else:
-                # Extract recording URL from conversation data if present
                 recording_url = None
                 try:
                     conversation_data = parsed_json.get("conversation", [])
@@ -392,17 +518,15 @@ class CommunicationAPIView(APIView):
                 except Exception:
                     pass
 
-                # Fallback to DB field if no recording found in JSON
                 if not recording_url and recording:
                     recording = recording.strip()
                     recording_url = f"/media/{recording}" if not recording.startswith("/media/") else recording
 
             result.append({
-                "partner": partner,
+                "partner": customer_name or "",  # Display customer_name as 'partner'
                 "conversation_type": "AI Call",
                 "conversation_id": conversation_id,
                 "conversation_date": conversation_date,
-                # "conversation_data": parsed_json,
                 "recording_url": recording_url,
                 "call_summary_notes": call_summary_notes or "",
                 "call_duration": call_duration or 0,
